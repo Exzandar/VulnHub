@@ -1,0 +1,8 @@
+# Serial : 1
+
+######I downloaded the serial:1 machine from Vulnhub on this link ( https://www.vulnhub.com/entry/serial-1,349/ ) and its size was 3.5 GB
+######It's an easy - medium machine and i used VirtualBox to run the machine.
+
+## [A] Nmap.
+i used nmap to know the address of the new machine on my local network so i used ```nmap -sn 192.168.1.0/24```
+**bold**
